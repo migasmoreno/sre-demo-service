@@ -1,0 +1,9 @@
+flask==3.0.3
+gunicorn[gthread]==22.0.0
+
+# OpenTelemetry — let pip resolve latest compatible versions
+# (0.48b0+ replaced pkg_resources with importlib.metadata, fixing Python 3.12 slim)
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-gcp-trace
+opentelemetry-instrumentation-flask
