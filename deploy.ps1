@@ -2,7 +2,10 @@ param(
     [string]$ProjectId    = "optimum-web-487816-v4",
     [string]$Region       = "europe-west1",
     [string]$ServiceName  = "sre-demo-service",
-    [string]$RegistryName = "sre-demo"
+    [string]$RegistryName = "sre-demo",
+    [string]$GitHubOwner  = "migasmoreno",
+    [string]$GitHubRepo   = "sre-demo-service",
+    [string]$GitHubBranch = "main"
 )
 
 $ImageTag = "$Region-docker.pkg.dev/$ProjectId/$RegistryName/${ServiceName}:latest"
@@ -39,8 +42,23 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Cloud Build failed!" -ForegroundColor Red
 Write-Host "  Image built: $ImageTag" -ForegroundColor Green
 
 # 4. Cloud Run deploy
+# Labels include GitHub repo information so SRE agents can identify
+# the source repository for automated code remediation (git_remediation_agent).
 Write-Host "[4/7] Deploying to Cloud Run..." -ForegroundColor Yellow
-gcloud run deploy $ServiceName --image $ImageTag --platform managed --region $Region --project $ProjectId --allow-unauthenticated --min-instances 0 --max-instances 3 --memory 256Mi --cpu 1 --timeout 120 --set-env-vars "GOOGLE_CLOUD_PROJECT=$ProjectId" --quiet
+gcloud run deploy $ServiceName `
+    --image $ImageTag `
+    --platform managed `
+    --region $Region `
+    --project $ProjectId `
+    --allow-unauthenticated `
+    --min-instances 0 `
+    --max-instances 3 `
+    --memory 256Mi `
+    --cpu 1 `
+    --timeout 120 `
+    --set-env-vars "GOOGLE_CLOUD_PROJECT=$ProjectId" `
+    --update-labels "github-owner=${GitHubOwner},github-repo=${GitHubRepo},github-branch=${GitHubBranch},github-repository=${GitHubOwner}-${GitHubRepo}" `
+    --quiet
 if ($LASTEXITCODE -ne 0) { Write-Host "Cloud Run deploy failed!" -ForegroundColor Red; exit 1 }
 
 # Grant Cloud Trace write permission to the Cloud Run service account
