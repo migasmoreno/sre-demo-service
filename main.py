@@ -1,4 +1,4 @@
-"""
+﻿"""
 sre-demo-service — Cloud Run service that generates realistic SRE signals.
 
 Endpoints:
@@ -104,20 +104,45 @@ _setup_tracing()
 # ---------------------------------------------------------------------------
 
 def _get_trace_context() -> tuple[str, str, bool]:
-    """Read trace context from the active OTel span.
+    """Read trace context — OTel span first, HTTP header as fallback.
 
     Returns (trace_resource, hex_span_id, is_sampled).
-    The trace_resource is in the Cloud Logging format:
-      projects/{project_id}/traces/{trace_id}
+    trace_resource is in Cloud Logging format: projects/{project_id}/traces/{trace_id}
+
+    Priority:
+      1. Active OTel span — includes child spans (e.g. payment-processor)
+      2. X-Cloud-Trace-Context header — injected by GCP load balancer on every request,
+         ensures every log entry is trace-correlated even when OTel context is absent.
     """
+    # 1. Primary: active OTel span
     span = trace.get_current_span()
     ctx  = span.get_span_context() if span else None
     if ctx and ctx.is_valid:
-        trace_id   = format(ctx.trace_id, "032x")
-        span_id    = format(ctx.span_id,  "016x")
-        sampled    = bool(ctx.trace_flags & 0x01)
-        trace_res  = f"projects/{PROJECT_ID}/traces/{trace_id}"
-        return trace_res, span_id, sampled
+        trace_id = format(ctx.trace_id, "032x")
+        span_id  = format(ctx.span_id,  "016x")
+        sampled  = bool(ctx.trace_flags & 0x01)
+        return f"projects/{PROJECT_ID}/traces/{trace_id}", span_id, sampled
+
+    # 2. Fallback: X-Cloud-Trace-Context header (format: TRACE_ID/SPAN_ID;o=FLAG)
+    #    SPAN_ID is decimal in the header — convert to 16-char hex for Cloud Logging.
+    try:
+        from flask import request as _req
+        header = _req.headers.get("X-Cloud-Trace-Context", "")
+        if header:
+            trace_part, _, rest = header.partition("/")
+            span_part, _, flag_part = rest.partition(";")
+            if len(trace_part) == 32:
+                sampled = "o=1" in flag_part
+                span_hex = ""
+                if span_part:
+                    try:
+                        span_hex = format(int(span_part), "016x")
+                    except ValueError:
+                        span_hex = span_part
+                return f"projects/{PROJECT_ID}/traces/{trace_part}", span_hex, sampled
+    except RuntimeError:
+        pass  # No Flask request context (background threads, startup logs)
+
     return "", "", False
 
 
@@ -355,3 +380,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     log.info("Starting %s on port %d", SERVICE_NAME, port)
     app.run(host="0.0.0.0", port=port, debug=False)
+
