@@ -1,4 +1,4 @@
-﻿"""
+"""
 sre-demo-service — Cloud Run service that generates realistic SRE signals.
 
 Endpoints:
@@ -36,8 +36,11 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 from opentelemetry.sdk.trace import SpanProcessor
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.propagators.cloud_trace_propagator import CloudTraceFormatPropagator
+from opentelemetry.propagate import set_global_textmap
 
 
 SERVICE_NAME    = os.getenv("K_SERVICE",  "sre-demo-service")
@@ -81,14 +84,27 @@ def _setup_tracing() -> None:
     instances can be recycled before BatchSpanProcessor flushes its buffer,
     causing silent span loss. SimpleSpanProcessor exports each span synchronously
     the moment it ends, ensuring no spans are lost on instance shutdown.
+
+    ALWAYS_ON sampler: the X-Cloud-Trace-Context header injected by the GCP load
+    balancer often carries o=0 (sampling disabled). Without ALWAYS_ON, OTel would
+    honour that flag and not export the span to Cloud Trace, while still writing
+    the trace ID to Cloud Logging — producing orphan log entries with no matching
+    trace in Cloud Trace. ALWAYS_ON forces every span to be exported regardless
+    of the incoming sampling flag.
+
+    CloudTraceFormatPropagator: reads X-Cloud-Trace-Context and maps the trace ID
+    directly into the OTel span context, ensuring log entries and Cloud Trace spans
+    share the same 32-char hex trace ID.
     """
     try:
+        # Force all spans to be sampled and exported — overrides o=0 from GCP LB header
+        set_global_textmap(CloudTraceFormatPropagator())
         exporter = CloudTraceSpanExporter(project_id=PROJECT_ID)
-        provider = TracerProvider()
+        provider = TracerProvider(sampler=ALWAYS_ON)
         provider.add_span_processor(_LoggingSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
         logging.getLogger("sre-demo").info(
-            "OTel Cloud Trace exporter initialised (SimpleSpanProcessor) | project=%s", PROJECT_ID
+            "OTel Cloud Trace exporter initialised (ALWAYS_ON sampler) | project=%s", PROJECT_ID
         )
     except Exception as exc:
         logging.getLogger("sre-demo").warning(
@@ -345,17 +361,21 @@ def webhook():
 
 @app.get("/chaos")
 def chaos():
-    """Randomly invokes one failure mode — used by Cloud Scheduler."""
+    """Randomly invokes one failure mode — used by Cloud Scheduler.
+
+    Calls view functions directly (no test_request_context) so the active
+    OTel span from the real /chaos request is preserved. This ensures the
+    trace ID in Cloud Logging matches the trace ID exported to Cloud Trace.
+    """
     mode = random.choices(
         ["error", "slow", "db-timeout", "health"],
         weights=[25, 20, 20, 35], k=1,
     )[0]
     log.info("Chaos mode selected: %s", mode)
-    with app.test_request_context(f"/{mode}"):
-        if mode == "error":     return forced_error()
-        if mode == "slow":      return slow_response()
-        if mode == "db-timeout": return db_timeout()
-        return health()
+    if mode == "error":      return forced_error()
+    if mode == "slow":       return slow_response()
+    if mode == "db-timeout": return db_timeout()
+    return health()
 
 
 # ---------------------------------------------------------------------------
