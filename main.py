@@ -1,23 +1,3 @@
-"""
-sre-demo-service — Cloud Run service that generates realistic SRE signals.
-
-Endpoints:
-  GET  /           → homepage, always 200
-  GET  /health     → readiness check, always 200, logs INFO
-  GET  /error      → forced 500 with full traceback in logs
-  GET  /slow       → 200 after 6-9s (simulates DB back-pressure)
-  GET  /crash      → unhandled exception → Cloud Run logs ERROR+stacktrace
-  GET  /db-timeout → simulates connection pool exhaustion (5% chance of 500)
-  POST /webhook    → event ingestion with ~20% random failure rate
-  GET  /chaos      → randomly picks one of the failure modes (used by scheduler)
-
-Observability:
-  - Structured JSON logs → Cloud Logging (severity, logging.googleapis.com/trace)
-  - OpenTelemetry spans  → Cloud Trace via CloudTraceSpanExporter
-  - Log↔Trace correlation: StructuredLogHandler reads active OTel span context
-    and injects logging.googleapis.com/trace + spanId into every log entry.
-"""
-
 import json
 import logging
 import os
@@ -28,13 +8,14 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
 
+import tenacity # Added import for tenacity
+
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry setup — must happen before Flask is instrumented
 # ---------------------------------------------------------------------------
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
@@ -206,7 +187,7 @@ def index():
         "service":   SERVICE_NAME,
         "version":   SERVICE_VERSION,
         "status":    "running",
-        "endpoints": ["/health", "/error", "/slow", "/crash", "/db-timeout", "/webhook", "/chaos"],
+        "endpoints": ["/health", "/error", "/slow", "/db-timeout", "/webhook", "/chaos"],
     })
 
 
@@ -223,7 +204,16 @@ def forced_error():
     with tracer.start_as_current_span("payment-processor.process") as span:
         span.set_attribute("component", "payment-processor")
         try:
-            _simulate_db_query(fail=True)
+            @tenacity.retry(
+                wait=tenacity.wait_exponential(multiplier=1, min=1, max=10),
+                stop=tenacity.stop_after_attempt(3),
+                retry=tenacity.retry_if_exception_type(ConnectionError),
+                reraise=True
+            )
+            def _call_db_query_with_retry():
+                _simulate_db_query(fail=True)
+
+            _call_db_query_with_retry()
         except Exception as exc:
             tb = traceback.format_exc()
             span.record_exception(exc)
