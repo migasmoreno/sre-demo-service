@@ -347,8 +347,8 @@ def webhook():
 def chaos():
     """Randomly invokes one failure mode — used by Cloud Scheduler."""
     mode = random.choices(
-        ["error", "slow", "db-timeout", "health"],
-        weights=[25, 20, 20, 35], k=1,
+        ["slow", "db-timeout", "health"],
+        weights=[20, 20, 35], k=1,
     )[0]
     log.info("Chaos mode selected: %s", mode)
     with app.test_request_context(f"/{mode}"):
@@ -380,4 +380,3 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
     log.info("Starting %s on port %d", SERVICE_NAME, port)
     app.run(host="0.0.0.0", port=port, debug=False)
-
