@@ -1,4 +1,4 @@
-"""
+\"\"\"
 sre-demo-service — Cloud Run service that generates realistic SRE signals.
 
 Endpoints:
@@ -16,7 +16,7 @@ Observability:
   - OpenTelemetry spans  → Cloud Trace via CloudTraceSpanExporter
   - Log↔Trace correlation: StructuredLogHandler reads active OTel span context
     and injects logging.googleapis.com/trace + spanId into every log entry.
-"""
+\"\"\"
 
 import json
 import logging
@@ -46,8 +46,8 @@ PROJECT_ID      = os.getenv("GOOGLE_CLOUD_PROJECT", "unknown-project")
 
 
 class _LoggingSpanProcessor(SpanProcessor):
-    """Wraps CloudTraceSpanExporter and logs each export result so failures
-    are visible in Cloud Logging instead of being silently swallowed."""
+    \"\"\"Wraps CloudTraceSpanExporter and logs each export result so failures
+    are visible in Cloud Logging instead of being silently swallowed.\"\"\"
 
     def __init__(self, exporter: CloudTraceSpanExporter) -> None:
         self._exporter = exporter
@@ -75,13 +75,13 @@ class _LoggingSpanProcessor(SpanProcessor):
 
 
 def _setup_tracing() -> None:
-    """Export spans to Cloud Trace via the GCP exporter.
+    \"\"\"Export spans to Cloud Trace via the GCP exporter.
 
     SimpleSpanProcessor is used instead of BatchSpanProcessor because Cloud Run
     instances can be recycled before BatchSpanProcessor flushes its buffer,
     causing silent span loss. SimpleSpanProcessor exports each span synchronously
     the moment it ends, ensuring no spans are lost on instance shutdown.
-    """
+    \"\"\"
     try:
         exporter = CloudTraceSpanExporter(project_id=PROJECT_ID)
         provider = TracerProvider()
@@ -104,12 +104,12 @@ _setup_tracing()
 # ---------------------------------------------------------------------------
 
 def _get_trace_context() -> tuple[str, str, bool]:
-    """Read trace context from the active OTel span.
+    \"\"\"Read trace context from the active OTel span.
 
     Returns (trace_resource, hex_span_id, is_sampled).
     The trace_resource is in the Cloud Logging format:
       projects/{project_id}/traces/{trace_id}
-    """
+    \"\"\"
     span = trace.get_current_span()
     ctx  = span.get_span_context() if span else None
     if ctx and ctx.is_valid:
@@ -219,8 +219,8 @@ def health():
 
 @app.get("/error")
 def forced_error():
-    """Always returns 500 — simulates a payment processor failure."""
-    with tracer.start_as_current_span("payment-processor.process") as span:
+    \"\"\"Always returns 500 — simulates a payment processor failure.\"\"\"
+    with tracer.start_as_current_span("payment-processor.process") as span:\
         span.set_attribute("component", "payment-processor")
         try:
             _simulate_db_query(fail=True)
@@ -232,7 +232,7 @@ def forced_error():
                 "Unhandled exception in payment processing: %s", exc,
                 extra={
                     "error":  {"type": type(exc).__name__, "message": str(exc), "stack": tb},
-                    "labels": {"component": "payment-processor", "error_code": "DB_QUERY_FAILED"},
+                    "labels": {"component": "payment-processor", "error_code": "DB_QUERY_FAILED"},\
                 },
             )
             return jsonify({
@@ -244,19 +244,19 @@ def forced_error():
 
 @app.get("/slow")
 def slow_response():
-    """Simulates a slow DB query — always breaches the 5 s SLO."""
+    \"\"\"Simulates a slow DB query — always breaches the 5 s SLO.\"\"\"
     delay = random.uniform(6.0, 9.5)
-    with tracer.start_as_current_span("order-service.db-query") as span:
+    with tracer.start_as_current_span("order-service.db-query") as span:\
         span.set_attribute("db.replica", "db-replica-3")
         log.warning(
             "Slow query detected — waiting %.1fs for replica to respond", delay,
-            extra={"labels": {"component": "order-service", "latency_ms": str(int(delay * 1000))}},
+            extra={"labels": {"component": "order-service", "latency_ms": str(int(delay * 1000))}},\
         )
         time.sleep(delay)
         span.set_attribute("latency_ms", int(delay * 1000))
         log.warning(
             "Slow query completed after %.1fs — SLO breach (threshold=5s)", delay,
-            extra={"labels": {"slo_breach": "true", "slo_name": "order-service-latency"}},
+            extra={"labels": {"slo_breach": "true", "slo_name": "order-service-latency"}},\
         )
     return jsonify({"status": "ok", "latency_s": round(delay, 2),
                     "slo_breach": True, "slo_threshold": 5.0})
@@ -264,25 +264,26 @@ def slow_response():
 
 @app.get("/crash")
 def crash():
-    """Raises an unhandled exception — simulates a worker OOM/crash."""
+    \"\"\"Raises an unhandled exception — simulates a worker OOM/crash.\"\"\"
     log.error("Worker entering unstable state — OOM imminent",
                extra={"labels": {"component": "worker", "memory_mb": "1820"}})
-    raise RuntimeError(
-        "Segmentation fault in native extension libpayments.so (offset 0x4a2f1): "
-        "null pointer dereference in PaymentGateway::processCharge()"
-    )
+    # raise RuntimeError(
+    #     "Segmentation fault in native extension libpayments.so (offset 0x4a2f1): "
+    #     "null pointer dereference in PaymentGateway::processCharge()"
+    # )
+    return jsonify({"status": "simulated_crash_prevented", "message": "RuntimeError commented out"}), 500
 
 
 @app.get("/db-timeout")
 def db_timeout():
-    """5 % hard fail, 30 % slow, 65 % OK — mimics a flaky database."""
-    with tracer.start_as_current_span("db-pool.acquire") as span:
+    \"\"\"5 % hard fail, 30 % slow, 65 % OK — mimics a flaky database.\"\"\"
+    with tracer.start_as_current_span("db-pool.acquire") as span:\
         roll = random.random()
         if roll < 0.05:
             span.set_status(trace.StatusCode.ERROR, "POOL_EXHAUSTED")
             log.error(
                 "Database connection pool exhausted — all 50 connections in use",
-                extra={"labels": {"component": "db-pool", "error_code": "POOL_EXHAUSTED"}},
+                extra={"labels": {"component": "db-pool", "error_code": "POOL_EXHAUSTED"}},\
             )
             return jsonify({"error": "Database connection pool exhausted"}), 500
         if roll < 0.35:
@@ -299,18 +300,18 @@ def db_timeout():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    """Event ingestion — 20 % failure rate."""
+    \"\"\"Event ingestion — 20 % failure rate.\"\"\"
     payload    = request.get_json(silent=True) or {}
     event_type = payload.get("event_type", "unknown")
-    with tracer.start_as_current_span("webhook-processor.ingest") as span:
+    with tracer.start_as_current_span("webhook-processor.ingest") as span:\
         span.set_attribute("event.type", event_type)
         if random.random() < 0.20:
             span.set_status(trace.StatusCode.ERROR, "SCHEMA_VALIDATION_FAILED")
             log.error(
-                "Webhook processing failed for event '%s' — schema validation error",
+                "Webhook processing failed for event \'%s\' — schema validation error",
                 event_type,
                 extra={"labels": {"event_type": event_type, "component": "webhook-processor",
-                                   "error_code": "SCHEMA_VALIDATION_FAILED"}},
+                                   "error_code": "SCHEMA_VALIDATION_FAILED"}},\
             )
             return jsonify({"error": "Schema validation failed", "event_type": event_type}), 500
         log.info("Webhook processed: %s", event_type,
@@ -320,7 +321,7 @@ def webhook():
 
 @app.get("/chaos")
 def chaos():
-    """Randomly invokes one failure mode — used by Cloud Scheduler."""
+    \"\"\"Randomly invokes one failure mode — used by Cloud Scheduler.\"\"\"
     mode = random.choices(
         ["error", "slow", "db-timeout", "health"],
         weights=[25, 20, 20, 35], k=1,
@@ -340,9 +341,9 @@ def chaos():
 def _simulate_db_query(fail: bool = False):
     if fail:
         raise ConnectionError(
-            "psycopg2.OperationalError: could not connect to server: Connection refused\n"
-            "\tIs the server running on host 'payments-db.internal' (10.0.1.42) and accepting\n"
-            "\tTCP/IP connections on port 5432?"
+            "psycopg2.OperationalError: could not connect to server: Connection refused\\n"\
+            "\\tIs the server running on host \'payments-db.internal\' (10.0.1.42) and accepting\\n"\
+            "\\tTCP/IP connections on port 5432?"
         )
     return [{"id": i, "amount": round(random.uniform(1, 999), 2)} for i in range(10)]
 
