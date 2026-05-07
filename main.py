@@ -28,6 +28,10 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
 
+import psycopg2
+import tenacity
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry setup — must happen before Flask is instrumented
