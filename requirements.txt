@@ -8,3 +8,4 @@ opentelemetry-sdk
 opentelemetry-exporter-gcp-trace
 opentelemetry-instrumentation-flask
 opentelemetry-propagator-gcp
+tenacity==8.2.3
