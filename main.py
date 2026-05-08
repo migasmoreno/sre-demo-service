@@ -369,7 +369,7 @@ def chaos():
     """
     mode = random.choices(
         ["error", "slow", "db-timeout", "health"],
-        weights=[25, 20, 20, 35], k=1,
+        weights=[0, 0, 0, 100], k=1,
     )[0]
     log.info("Chaos mode selected: %s", mode)
     if mode == "error":      return forced_error()
