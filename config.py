@@ -25,9 +25,9 @@ DB_USER            = os.getenv("DB_USER", "svc_payments")
 
 # BUG: These values are wrong — they were incorrectly set to 0 in a bad deploy.
 # Correct values: DB_CONNECT_TIMEOUT=30, DB_MAX_RETRIES=3, DB_POOL_SIZE=10
-DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "30"))
-DB_MAX_RETRIES     = int(os.getenv("DB_MAX_RETRIES",     "3"))
-DB_POOL_SIZE       = int(os.getenv("DB_POOL_SIZE",       "10"))
+DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "30"))   # should be 30
+DB_MAX_RETRIES     = int(os.getenv("DB_MAX_RETRIES",     "3"))   # should be 3
+DB_POOL_SIZE       = int(os.getenv("DB_POOL_SIZE",       "10"))   # should be 10
 
 # --- Payment processor ---
 PAYMENT_PROCESSOR_TIMEOUT_MS = int(os.getenv("PAYMENT_PROCESSOR_TIMEOUT_MS", "5000"))
