@@ -197,7 +197,7 @@ class StructuredLogHandler(logging.StreamHandler):
         print(json.dumps(payload), flush=True)
 
 
-logging.basicConfig(level=logging.DEBUG, handlers=[StructuredLogHandler()])
+logging.basicConfig(level=logging.DEBUG, handlers=[StructuredLogHandler()], force=True)
 log = logging.getLogger("sre-demo")
 
 app   = Flask(__name__)
