@@ -264,7 +264,8 @@ def forced_error():
     with tracer.start_as_current_span("payment-processor.process") as span:
         span.set_attribute("component", "payment-processor")
         try:
-            _simulate_db_query(fail=True)
+            _simulate_db_query(fail=False)
+            return jsonify({"status": "ok"}), 200
         except Exception as exc:
             tb = traceback.format_exc()
             span.record_exception(exc)
@@ -369,7 +370,7 @@ def chaos():
     """
     mode = random.choices(
         ["error", "slow", "db-timeout", "health"],
-        weights=[25, 20, 20, 35], k=1,
+        weights=[0, 0, 0, 100], k=1,
     )[0]
     log.info("Chaos mode selected: %s", mode)
     if mode == "error":      return forced_error()
